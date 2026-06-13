@@ -96,7 +96,8 @@ Configuration is done entirely through the UI:
 This creates one device with the following entities:
 
 - **ETA** (`sensor.*_eta`) – seconds until the nearest matching bus reaches
-  the stop (device class: duration)
+  the stop (device class: duration). Also exposes an `eta_mm_ss` attribute
+  with the same value formatted as `m:ss` (e.g. `3:41`).
 - **Distance** (`sensor.*_distance`) – remaining distance, in meters, of the
   nearest matching bus (device class: distance)
 - **Plate** (`sensor.*_plate`) – license plate of the nearest matching bus

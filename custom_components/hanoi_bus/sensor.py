@@ -15,6 +15,7 @@ from .const import (
     ATTR_BUSES,
     ATTR_DISTANCE,
     ATTR_ETA,
+    ATTR_ETA_FORMATTED,
     ATTR_FLEET_CODE,
     ATTR_PLATE,
     ATTR_ROUTE_NAME,
@@ -55,10 +56,21 @@ def _buses_attr(buses: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ATTR_FLEET_CODE: bus.get("FleetCode") or bus.get("Fleet"),
                 ATTR_DISTANCE: bus.get("PartRemained"),
                 ATTR_ETA: bus.get("TimeRemained"),
+                ATTR_ETA_FORMATTED: _format_mm_ss(bus.get("TimeRemained")),
                 ATTR_SPEED: bus.get("SpeedKmh"),
             }
         )
     return result
+
+
+def _format_mm_ss(seconds: Any) -> str | None:
+    try:
+        total = int(round(float(seconds)))
+    except (TypeError, ValueError):
+        return None
+    total = max(total, 0)
+    minutes, secs = divmod(total, 60)
+    return f"{minutes}:{secs:02d}"
 
 
 def _nearest(buses: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -145,6 +157,7 @@ class HanoiBusEtaSensor(HanoiBusEntity, SensorEntity):
         bus = _nearest(self._matching)
         if bus:
             attrs[ATTR_PLATE] = bus.get("BienKiemSoat")
+            attrs[ATTR_ETA_FORMATTED] = _format_mm_ss(bus.get("TimeRemained"))
         return attrs
 
 
