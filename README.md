@@ -57,7 +57,10 @@ Field meanings:
 - `BienKiemSoat` – license plate
 - `PartRemained` – remaining distance to the stop, **in meters**
 - `TimeRemained` – estimated time remaining, **in seconds**
-- `Speed` – current speed, km/h
+- `Speed` – always `0` in observed responses across multiple stations/lines;
+  timbus.vn does not appear to populate this field. It's still included in
+  the `buses` attribute for completeness but isn't exposed as its own
+  sensor.
 
 This integration polls the `partremained` endpoint every 30 seconds for the
 stop you configure.
@@ -94,8 +97,7 @@ This creates one device with the following entities:
   the stop (device class: duration)
 - **Distance** (`sensor.*_distance`) – remaining distance, in meters, of the
   nearest matching bus (device class: distance)
-- **Speed** (`sensor.*_speed`) – current speed (km/h) of the nearest
-  matching bus
+- **Plate** (`sensor.*_plate`) – license plate of the nearest matching bus
 - **Buses approaching** (`sensor.*_buses_approaching`) – how many buses on
   that line are currently inbound to the stop
 

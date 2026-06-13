@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfLength, UnitOfSpeed, UnitOfTime
+from homeassistant.const import UnitOfLength, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -39,7 +39,7 @@ async def async_setup_entry(
         [
             HanoiBusEtaSensor(coordinator, entry),
             HanoiBusDistanceSensor(coordinator, entry),
-            HanoiBusSpeedSensor(coordinator, entry),
+            HanoiBusPlateSensor(coordinator, entry),
             HanoiBusCountSensor(coordinator, entry),
         ]
     )
@@ -180,37 +180,28 @@ class HanoiBusDistanceSensor(HanoiBusEntity, SensorEntity):
         return attrs
 
 
-class HanoiBusSpeedSensor(HanoiBusEntity, SensorEntity):
-    """Current speed (km/h) of the nearest matching bus."""
+class HanoiBusPlateSensor(HanoiBusEntity, SensorEntity):
+    """License plate of the nearest matching bus."""
 
-    _attr_name = "Speed"
-    _attr_icon = "mdi:speedometer"
-    _attr_device_class = SensorDeviceClass.SPEED
-    _attr_native_unit_of_measurement = UnitOfSpeed.KILOMETERS_PER_HOUR
+    _attr_name = "Plate"
+    _attr_icon = "mdi:card-text"
 
     def __init__(self, coordinator: HanoiBusCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = (
-            f"{entry.data[CONF_ROUTE_ID]}_{entry.data[CONF_STATION_ID]}_speed"
+            f"{entry.data[CONF_ROUTE_ID]}_{entry.data[CONF_STATION_ID]}_plate"
         )
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> str | None:
         bus = _nearest(self._matching)
         if not bus:
             return None
-        try:
-            return float(bus.get("Speed"))
-        except (TypeError, ValueError):
-            return None
+        return bus.get("BienKiemSoat")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attrs = self._extra_attrs()
-        bus = _nearest(self._matching)
-        if bus:
-            attrs[ATTR_PLATE] = bus.get("BienKiemSoat")
-        return attrs
+        return self._extra_attrs()
 
 
 class HanoiBusCountSensor(HanoiBusEntity, SensorEntity):
