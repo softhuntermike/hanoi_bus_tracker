@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfLength, UnitOfTime
+from homeassistant.const import UnitOfLength, UnitOfSpeed, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -40,6 +40,7 @@ async def async_setup_entry(
             HanoiBusEtaSensor(coordinator, entry),
             HanoiBusDistanceSensor(coordinator, entry),
             HanoiBusPlateSensor(coordinator, entry),
+            HanoiBusSpeedSensor(coordinator, entry),
             HanoiBusCountSensor(coordinator, entry),
         ]
     )
@@ -54,7 +55,7 @@ def _buses_attr(buses: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ATTR_FLEET_CODE: bus.get("FleetCode") or bus.get("Fleet"),
                 ATTR_DISTANCE: bus.get("PartRemained"),
                 ATTR_ETA: bus.get("TimeRemained"),
-                ATTR_SPEED: bus.get("Speed"),
+                ATTR_SPEED: bus.get("SpeedKmh"),
             }
         )
     return result
@@ -202,6 +203,41 @@ class HanoiBusPlateSensor(HanoiBusEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return self._extra_attrs()
+
+
+class HanoiBusSpeedSensor(HanoiBusEntity, SensorEntity):
+    """Estimated speed (km/h) of the nearest matching bus.
+
+    timbus.vn's API does not populate a usable speed field, so this is
+    derived from the change in PartRemained (distance to the stop) between
+    consecutive polls.
+    """
+
+    _attr_name = "Speed"
+    _attr_icon = "mdi:speedometer"
+    _attr_device_class = SensorDeviceClass.SPEED
+    _attr_native_unit_of_measurement = UnitOfSpeed.KILOMETERS_PER_HOUR
+
+    def __init__(self, coordinator: HanoiBusCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = (
+            f"{entry.data[CONF_ROUTE_ID]}_{entry.data[CONF_STATION_ID]}_speed"
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        bus = _nearest(self._matching)
+        if not bus:
+            return None
+        return bus.get("SpeedKmh")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs = self._extra_attrs()
+        bus = _nearest(self._matching)
+        if bus:
+            attrs[ATTR_PLATE] = bus.get("BienKiemSoat")
+        return attrs
 
 
 class HanoiBusCountSensor(HanoiBusEntity, SensorEntity):

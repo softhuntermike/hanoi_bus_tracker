@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -31,6 +32,7 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.route_name: str = entry.data[CONF_ROUTE_NAME]
         self.route_code: str = entry.data[CONF_ROUTE_CODE]
         self.station_id: str = entry.data[CONF_STATION_ID]
+        self._previous: dict[str, tuple[float, float]] = {}
 
         super().__init__(
             hass,
@@ -44,6 +46,37 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             buses = await self.client.part_remained(self.station_id)
         except TimbusApiError as err:
             raise UpdateFailed(str(err)) from err
+
+        now = time.monotonic()
+        seen: set[str] = set()
+        for bus in buses:
+            plate = bus.get("BienKiemSoat")
+            try:
+                distance = float(bus.get("PartRemained"))
+            except (TypeError, ValueError):
+                distance = None
+
+            speed_kmh = None
+            if plate and distance is not None:
+                seen.add(plate)
+                prev = self._previous.get(plate)
+                if prev is not None:
+                    prev_time, prev_distance = prev
+                    delta_time = now - prev_time
+                    delta_distance = prev_distance - distance
+                    # Ignore stale samples or distance jumps (bus passed the
+                    # stop / route reset) which would give a meaningless speed.
+                    if 0 < delta_time <= 120 and 0 <= delta_distance <= 2000:
+                        speed_kmh = (delta_distance / delta_time) * 3.6
+                self._previous[plate] = (now, distance)
+
+            bus["SpeedKmh"] = round(speed_kmh, 1) if speed_kmh is not None else None
+
+        # Drop plates we haven't seen this round so stale entries don't
+        # accumulate forever.
+        for plate in list(self._previous):
+            if plate not in seen:
+                del self._previous[plate]
 
         matching = [bus for bus in buses if self._matches_route(bus)]
 
