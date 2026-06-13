@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Search for a Hanoi bus line",
+        "description": "Enter a bus line number or name to search timbus.vn (e.g. \"09\", \"32\", \"49\").",
+        "data": {
+          "route_query": "Bus line"
+        }
+      },
+      "route": {
+        "title": "Select the bus line",
+        "description": "Choose the exact line/direction returned by the search.",
+        "data": {
+          "route": "Bus line"
+        }
+      },
+      "station": {
+        "title": "Select the bus stop",
+        "description": "Choose the bus stop along this line to get ETA/distance for. [Go] is the outbound direction, [Return] is the inbound direction.",
+        "data": {
+          "station": "Bus stop"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach timbus.vn. Please try again.",
+      "no_results": "No results found for that search."
+    },
+    "abort": {
+      "already_configured": "This bus line and stop combination is already configured."
+    }
+  }
+}

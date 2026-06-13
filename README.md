@@ -1,0 +1,155 @@
+# Hanoi Bus (Timbus) – Home Assistant Integration
+
+A custom Home Assistant integration that tracks Hanoi public buses
+(Transerco) using the **unofficial JSON API behind [timbus.vn](http://timbus.vn)**,
+and reports how far away / how soon a bus on a given line is from a chosen
+bus stop.
+
+> ⚠️ This uses an **unofficial, reverse-engineered API**. timbus.vn may
+> change or block it at any time without notice. There is no official
+> public API for Hanoi buses, and **the API does not expose raw vehicle
+> GPS coordinates** — only distance, ETA and speed relative to a stop (see
+> "Notes & caveats" below).
+
+## How it works
+
+timbus.vn (the public bus-tracking site run by Transerco) exposes a couple
+of POST/JSON endpoints under `/Engine/Business/...` that power its website.
+**Note: the site only responds correctly over plain `http://`, not
+`https://`.**
+
+| Purpose | Endpoint | Key params |
+|---|---|---|
+| Search bus lines | `Search/action.ashx` | `act=searchfull&typ=1&key=<query>` |
+| Route detail (incl. station lists) | `Search/action.ashx` | `act=fleetdetail&fid=<route id>` |
+| **Live ETA/distance for a stop** | `Vehicle/action.ashx` | `act=partremained&State=true&StationID=<stop id>&FleetOver=` |
+
+### Verified example: line 49, stop "Đối diện nhà C6 KĐT Mỹ Đình I - đường Trần Hữu Dực"
+
+```
+POST http://timbus.vn/Engine/Business/Search/action.ashx
+act=searchfull&typ=1&key=49
+-> ObjectID=49, Name="49 - Trần Khánh Dư - Nhổn", FleedCode="49"
+
+POST http://timbus.vn/Engine/Business/Search/action.ashx
+act=fleetdetail&fid=49
+-> dt.Re.Station contains:
+   {"ObjectID": 1893, "Name": "Đối diện nhà C6 KĐT Mỹ Đình I - đường Trần Hữu Dực",
+    "FleetOver": "49,50,97", "Geo": {"Lng": 105.762421, "Lat": 21.029577}}
+
+POST http://timbus.vn/Engine/Business/Vehicle/action.ashx
+act=partremained&State=true&StationID=1893&FleetOver=
+-> dt: [
+     {"BienKiemSoat":"29E78612","FleetCode":"49 (Về Trần Khánh Dư)","Fleet":"49",
+      "PartRemained":1536,"TimeRemained":221,"Speed":0},
+     ... (buses for lines 50 and 97 that also serve this stop)
+   ]
+```
+
+The `partremained` response returns **every** bus approaching the stop
+(all lines that serve it). This integration filters the list down to the
+line you configured by matching the `Fleet` field (e.g. `"49"`).
+
+Field meanings:
+
+- `Fleet` – clean route number (used for matching, e.g. `"49"`)
+- `FleetCode` – route + direction label (e.g. `"49 (Về Trần Khánh Dư)"`)
+- `BienKiemSoat` – license plate
+- `PartRemained` – remaining distance to the stop, **in meters**
+- `TimeRemained` – estimated time remaining, **in seconds**
+- `Speed` – current speed, km/h
+
+This integration polls the `partremained` endpoint every 30 seconds for the
+stop you configure.
+
+## Installation
+
+### HACS (custom repository)
+
+1. In HACS, add this repository as a custom repository (Integrations).
+2. Install "Hanoi Bus (Timbus)".
+3. Restart Home Assistant.
+
+### Manual
+
+1. Copy the `custom_components/hanoi_bus` folder into your Home Assistant
+   `config/custom_components/` directory.
+2. Restart Home Assistant.
+
+## Configuration
+
+Configuration is done entirely through the UI:
+
+1. Go to **Settings → Devices & Services → Add Integration** and search for
+   **Hanoi Bus (Timbus)**.
+2. Enter the bus line number/name you want to track (e.g. `09`, `32`, `49`)
+   and pick the matching line/direction from the search results.
+3. Pick the bus stop along that line from the list (stops are labelled
+   `[Go]` for the outbound direction or `[Return]` for the inbound
+   direction).
+
+This creates one device with the following entities:
+
+- **ETA** (`sensor.*_eta`) – seconds until the nearest matching bus reaches
+  the stop (device class: duration)
+- **Distance** (`sensor.*_distance`) – remaining distance, in meters, of the
+  nearest matching bus (device class: distance)
+- **Speed** (`sensor.*_speed`) – current speed (km/h) of the nearest
+  matching bus
+- **Buses approaching** (`sensor.*_buses_approaching`) – how many buses on
+  that line are currently inbound to the stop
+
+All sensors expose a `buses` attribute with the full list of matching buses
+(plate, fleet code, distance, ETA, speed) in case more than one bus is
+inbound.
+
+You can add as many bus-line/bus-stop combinations as you like by repeating
+the "Add Integration" flow.
+
+## Testing the API directly
+
+`scripts/test_api.py` is a standalone script (run on a machine with
+internet access) that exercises the same API client used by the
+integration — useful for finding route/station IDs and checking live
+responses before configuring Home Assistant:
+
+```bash
+cd scripts
+python test_api.py "49" "C6"
+```
+
+## Notes & caveats
+
+- **No raw GPS coordinates**: timbus.vn's public endpoints only return
+  distance/time/speed relative to a stop, not the vehicle's lat/lon. There
+  is no `device_tracker` entity for this reason — "GPS location" is
+  expressed as distance + ETA + speed relative to your chosen stop.
+- **Route matching**: a stop is often served by several lines (e.g. stop
+  1893 above is served by lines 49, 50 and 97). This integration filters
+  `partremained` results by the `Fleet` field matching your configured
+  line's code.
+- **Directions**: each route has a "Go" and "Return" station list with
+  different stops/IDs. Make sure to pick the stop for the direction you
+  care about — add a second config entry if you want both directions.
+- **HTTP only**: timbus.vn's API endpoints must be called over `http://`,
+  not `https://`.
+- If searches stop returning results, check the Home Assistant logs for
+  `hanoi_bus` — the integration logs raw errors from the API, and
+  timbus.vn may have changed its API.
+
+## Example automation
+
+```yaml
+automation:
+  - alias: "Leave for the bus stop"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.49_doi_dien_nha_c6_kdt_my_dinh_i_duong_tran_huu_duc_eta
+        below: 300  # 5 minutes, in seconds
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          message: >
+            Bus {{ state_attr(trigger.entity_id, 'buses')[0].plate }}
+            arrives in {{ (states(trigger.entity_id) | int / 60) | round(1) }} minutes.
+```

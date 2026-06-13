@@ -1,0 +1,73 @@
+"""Data update coordinator for the Hanoi Bus (Timbus) integration."""
+from __future__ import annotations
+
+import logging
+from datetime import timedelta
+from typing import Any
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .api import TimbusApiError, TimbusClient
+from .const import (
+    CONF_ROUTE_CODE,
+    CONF_ROUTE_NAME,
+    CONF_STATION_ID,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Polls timbus.vn for buses approaching a configured station."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.entry = entry
+        self.client = TimbusClient(async_get_clientsession(hass))
+        self.route_name: str = entry.data[CONF_ROUTE_NAME]
+        self.route_code: str = entry.data[CONF_ROUTE_CODE]
+        self.station_id: str = entry.data[CONF_STATION_ID]
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_{entry.entry_id}",
+            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        try:
+            buses = await self.client.part_remained(self.station_id)
+        except TimbusApiError as err:
+            raise UpdateFailed(str(err)) from err
+
+        matching = [bus for bus in buses if self._matches_route(bus)]
+
+        return {"all": buses, "matching": matching}
+
+    def _matches_route(self, bus: dict[str, Any]) -> bool:
+        """Check whether a bus entry belongs to the configured route."""
+        code = str(self.route_code or "").strip().lower()
+        if not code:
+            return True
+
+        # "Fleet" is the clean route number (e.g. "49") and is the most
+        # reliable match. "FleetCode" additionally includes a direction
+        # label (e.g. "49 (Ve Tran Khanh Du)"), so fall back to a prefix
+        # check there.
+        fleet = bus.get("Fleet")
+        if fleet is not None and str(fleet).strip().lower() == code:
+            return True
+
+        for key in ("FleetCode", "Xe", "ChieuXe"):
+            value = bus.get(key)
+            if value is None:
+                continue
+            value = str(value).strip().lower()
+            if value == code or value.startswith(code):
+                return True
+        return False
