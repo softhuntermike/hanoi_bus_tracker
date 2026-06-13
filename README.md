@@ -24,28 +24,6 @@ of POST/JSON endpoints under `/Engine/Business/...` that power its website.
 | Route detail (incl. station lists) | `Search/action.ashx` | `act=fleetdetail&fid=<route id>` |
 | **Live ETA/distance for a stop** | `Vehicle/action.ashx` | `act=partremained&State=true&StationID=<stop id>&FleetOver=` |
 
-### Verified example: line 49, stop "Đối diện nhà C6 KĐT Mỹ Đình I - đường Trần Hữu Dực"
-
-```
-POST http://timbus.vn/Engine/Business/Search/action.ashx
-act=searchfull&typ=1&key=49
--> ObjectID=49, Name="49 - Trần Khánh Dư - Nhổn", FleedCode="49"
-
-POST http://timbus.vn/Engine/Business/Search/action.ashx
-act=fleetdetail&fid=49
--> dt.Re.Station contains:
-   {"ObjectID": 1893, "Name": "Đối diện nhà C6 KĐT Mỹ Đình I - đường Trần Hữu Dực",
-    "FleetOver": "49,50,97", "Geo": {"Lng": 105.762421, "Lat": 21.029577}}
-
-POST http://timbus.vn/Engine/Business/Vehicle/action.ashx
-act=partremained&State=true&StationID=1893&FleetOver=
--> dt: [
-     {"BienKiemSoat":"29E78612","FleetCode":"49 (Về Trần Khánh Dư)","Fleet":"49",
-      "PartRemained":1536,"TimeRemained":221,"Speed":0},
-     ... (buses for lines 50 and 97 that also serve this stop)
-   ]
-```
-
 The `partremained` response returns **every** bus approaching the stop
 (all lines that serve it). This integration filters the list down to the
 line you configured by matching the `Fleet` field (e.g. `"49"`).
