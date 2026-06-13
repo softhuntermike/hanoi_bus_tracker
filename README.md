@@ -102,7 +102,7 @@ responses before configuring Home Assistant:
 
 ```bash
 cd scripts
-python test_api.py "49" "C6"
+python test_api.py "32" "dai hoc su pham"
 ```
 
 ## Notes & caveats
