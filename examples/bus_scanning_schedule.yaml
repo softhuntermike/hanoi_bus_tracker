@@ -1,0 +1,46 @@
+# Automation: enable bus scanning on weekdays 07:00–09:00
+#
+# Replace the entity_id values with your actual switch entity IDs.
+# Find them in Settings → Devices & Services → Hanoi Bus → your device → Scanning.
+# They typically look like: switch.bus_49_doi_dien_nha_c6_kdt_my_dinh_i_scanning
+#
+# To import: paste into your automations.yaml, or use
+# Settings → Automations → + Create Automation → Edit in YAML.
+
+- alias: "Hanoi Bus: start scanning on weekday mornings"
+  description: "Turn on bus scanning at 07:00 Mon–Fri"
+  trigger:
+    - platform: time
+      at: "07:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - mon
+        - tue
+        - wed
+        - thu
+        - fri
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.YOUR_BUS_SCANNING_SWITCH
+  mode: single
+
+- alias: "Hanoi Bus: stop scanning on weekday mornings"
+  description: "Turn off bus scanning at 09:00 Mon–Fri"
+  trigger:
+    - platform: time
+      at: "09:00:00"
+  condition:
+    - condition: time
+      weekday:
+        - mon
+        - tue
+        - wed
+        - thu
+        - fri
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.YOUR_BUS_SCANNING_SWITCH
+  mode: single

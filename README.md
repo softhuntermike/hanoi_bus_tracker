@@ -124,6 +124,47 @@ python test_api.py "32" "dai hoc su pham"
   `hanoi_bus` — the integration logs raw errors from the API, and
   timbus.vn may have changed its API.
 
+## Pausing scanning on a schedule
+
+Each bus device includes a **Scanning** switch entity. You can add it to
+any dashboard card and also drive it from automations.
+
+Example: scan only on weekday mornings (07:00–09:00):
+
+```yaml
+- alias: "Hanoi Bus: start scanning on weekday mornings"
+  trigger:
+    - platform: time
+      at: "07:00:00"
+  condition:
+    - condition: time
+      weekday: [mon, tue, wed, thu, fri]
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.YOUR_BUS_SCANNING_SWITCH
+
+- alias: "Hanoi Bus: stop scanning on weekday mornings"
+  trigger:
+    - platform: time
+      at: "09:00:00"
+  condition:
+    - condition: time
+      weekday: [mon, tue, wed, thu, fri]
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.YOUR_BUS_SCANNING_SWITCH
+```
+
+Replace `switch.YOUR_BUS_SCANNING_SWITCH` with the actual entity ID of your
+Scanning switch (find it under **Settings → Devices & Services → Hanoi Bus
+→ your device → Scanning**). A ready-to-paste copy is in
+[`examples/bus_scanning_schedule.yaml`](examples/bus_scanning_schedule.yaml).
+
+When scanning is off, all sensors on that device display `Update paused`
+and no API calls are made until scanning is turned back on.
+
 ## Example automation
 
 ```yaml
