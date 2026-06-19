@@ -32,6 +32,7 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.route_name: str = entry.data[CONF_ROUTE_NAME]
         self.route_code: str = entry.data[CONF_ROUTE_CODE]
         self.station_id: str = entry.data[CONF_STATION_ID]
+        self.paused: bool = False
         self._previous: dict[str, tuple[float, float]] = {}
 
         super().__init__(
@@ -42,6 +43,9 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
+        if self.paused:
+            return {"all": [], "matching": [], "paused": True}
+
         try:
             buses = await self.client.part_remained(self.station_id)
         except TimbusApiError as err:

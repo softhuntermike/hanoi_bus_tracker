@@ -115,9 +115,19 @@ class HanoiBusEntity(CoordinatorEntity[HanoiBusCoordinator]):
         )
 
     @property
+    def _paused(self) -> bool:
+        return (self.coordinator.data or {}).get("paused", False)
+
+    @property
     def _matching(self) -> list[dict[str, Any]]:
         data = self.coordinator.data or {}
         return data.get("matching") or []
+
+    @property
+    def state(self) -> str | None:
+        if self._paused:
+            return "Update paused"
+        return super().state
 
     def _extra_attrs(self) -> dict[str, Any]:
         return {
