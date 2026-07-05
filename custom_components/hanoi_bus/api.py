@@ -146,7 +146,7 @@ class BusmapClient:
         if not isinstance(raw_list, list) or not raw_list:
             return []
 
-        _LOGGER.debug("Busmap raw response for station %s: %s", station_id, raw_list)
+        _LOGGER.warning("hanoi_bus Busmap raw response for station %s: %s", station_id, raw_list)
 
         result = []
         for item in raw_list:

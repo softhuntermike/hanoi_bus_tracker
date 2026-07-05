@@ -49,8 +49,9 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {"all": [], "matching": [], "paused": True}
 
         buses = await self.busmap.estimate_bus_to_station(self.station_id)
+        _LOGGER.warning("hanoi_bus: Busmap returned %d buses for station %s", len(buses), self.station_id)
         if not buses:
-            _LOGGER.debug("Busmap empty, falling back to timbus")
+            _LOGGER.warning("hanoi_bus: falling back to timbus")
             try:
                 buses = await self.client.part_remained(self.station_id)
             except TimbusApiError as err:
