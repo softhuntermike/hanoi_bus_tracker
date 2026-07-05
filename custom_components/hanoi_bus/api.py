@@ -1,8 +1,10 @@
-"""API clients for Hanoi bus tracking.
+"""Lightweight client for the (unofficial) timbus.vn JSON API.
 
-Two sources, tried in order:
-1. Busmap (api-web.busmap.vn) — richer data, AES-256-CBC encrypted responses.
-2. timbus.vn — fallback, plain JSON, always available.
+timbus.vn is the real-time bus tracking site operated by Transerco for
+Hanoi public buses. It exposes a couple of POST-only JSON endpoints under
+``/Engine/Business/...`` that are used by the public website. These are not
+officially documented/supported, so this client is intentionally defensive
+about the shape of the responses.
 """
 from __future__ import annotations
 
@@ -35,135 +37,6 @@ HEADERS = {
 
 REQUEST_TIMEOUT = 15
 
-
-# ---------------------------------------------------------------------------
-# Busmap client  (api-web.busmap.vn)
-# ---------------------------------------------------------------------------
-
-BUSMAP_BASE = "https://api-web.busmap.vn"
-BUSMAP_KEY_URL = f"{BUSMAP_BASE}/web/public/auth/decrypt_key"
-BUSMAP_ETA_URL = f"{BUSMAP_BASE}/web/public/station/estimate_bus_to_station"
-
-
-def _busmap_decrypt(key: bytes, hex_payload: str) -> Any:
-    """AES-256-CBC decrypt a Busmap response (first 16 bytes = IV)."""
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from cryptography.hazmat.primitives import padding
-
-    raw = bytes.fromhex(hex_payload)
-    iv, ct = raw[:16], raw[16:]
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-    dec = cipher.decryptor()
-    pt = dec.update(ct) + dec.finalize()
-    # strip PKCS7 padding
-    unpadder = padding.PKCS7(128).unpadder()
-    pt = unpadder.update(pt) + unpadder.finalize()
-    return json.loads(pt.decode())
-
-
-def _normalize_busmap(raw: dict) -> dict | None:
-    """Convert a Busmap bus item to timbus-compatible format.
-
-    Field names are best-effort — Busmap's API is undocumented and fields
-    were reverse-engineered. If this returns None the item is skipped and
-    the DEBUG log will show the raw payload for diagnosis.
-
-    # ponytail: update field candidates once a live response is observed
-    """
-    plate = (
-        raw.get("licensePlate") or raw.get("bienKiemSoat") or
-        raw.get("vehicleNo") or raw.get("busNo") or raw.get("plate")
-    )
-    route = raw.get("routeNo") or raw.get("routeId") or raw.get("route")
-    distance = (
-        raw.get("distanceRemaining") or raw.get("distance") or
-        raw.get("partRemained") or raw.get("khoangCach")
-    )
-    eta_sec = (
-        raw.get("timeRemaining") or raw.get("timeRemained") or raw.get("eta")
-    )
-    eta_min = raw.get("minuteRemaining") or raw.get("minuteRemain") or raw.get("minute")
-    if eta_sec is None and eta_min is not None:
-        try:
-            eta_sec = float(eta_min) * 60
-        except (TypeError, ValueError):
-            pass
-
-    try:
-        distance = float(distance) if distance is not None else None
-        eta_sec = float(eta_sec) if eta_sec is not None else None
-    except (TypeError, ValueError):
-        distance = eta_sec = None
-
-    if distance is None and eta_sec is None:
-        return None
-
-    return {
-        "BienKiemSoat": plate,
-        "FleetCode": str(route) if route else "",
-        "Fleet": str(route) if route else "",
-        "PartRemained": distance or 0.0,
-        "TimeRemained": eta_sec or 0.0,
-        "Speed": raw.get("speed") or raw.get("Speed") or 0,
-        "_source": "busmap",
-    }
-
-
-class BusmapClient:
-    """Async client for api-web.busmap.vn (AES-256-CBC encrypted responses)."""
-
-    def __init__(self, session: aiohttp.ClientSession) -> None:
-        self._session = session
-        self._key: bytes | None = None
-
-    async def _fetch_key(self) -> bytes:
-        async with async_timeout.timeout(REQUEST_TIMEOUT):
-            async with self._session.get(BUSMAP_KEY_URL) as resp:
-                resp.raise_for_status()
-                raw = await resp.json(content_type=None)
-                return raw.encode() if isinstance(raw, str) else raw
-
-    async def _get(self, url: str, params: dict) -> Any:
-        if self._key is None:
-            self._key = await self._fetch_key()
-        async with async_timeout.timeout(REQUEST_TIMEOUT):
-            async with self._session.get(url, params=params) as resp:
-                resp.raise_for_status()
-                hex_payload = await resp.json(content_type=None)
-        return _busmap_decrypt(self._key, hex_payload)
-
-    async def estimate_bus_to_station(self, station_id: str) -> list[dict[str, Any]]:
-        """Return approaching buses in timbus-compatible format, or [] on failure."""
-        try:
-            raw_list = await self._get(
-                BUSMAP_ETA_URL,
-                {"regionCode": "hn", "stationId": station_id, "group": 1},
-            )
-        except Exception as err:
-            _LOGGER.debug("Busmap request failed: %s", err)
-            return []
-
-        if not isinstance(raw_list, list) or not raw_list:
-            return []
-
-        _LOGGER.debug("hanoi_bus Busmap raw response for station %s: %s", station_id, raw_list)
-
-        result = []
-        for item in raw_list:
-            normalized = _normalize_busmap(item)
-            if normalized:
-                result.append(normalized)
-            else:
-                _LOGGER.warning(
-                    "Could not normalize Busmap item — raw fields: %s",
-                    list(item.keys()),
-                )
-        return result
-
-
-# ---------------------------------------------------------------------------
-# timbus.vn client  (fallback)
-# ---------------------------------------------------------------------------
 
 class TimbusApiError(Exception):
     """Raised when the timbus.vn API returns an unexpected response."""

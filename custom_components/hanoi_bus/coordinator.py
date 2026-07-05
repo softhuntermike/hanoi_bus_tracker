@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import BusmapClient, TimbusApiError, TimbusClient
+from .api import TimbusApiError, TimbusClient
 from .const import (
     CONF_ROUTE_CODE,
     CONF_ROUTE_NAME,
@@ -28,9 +28,7 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
-        session = async_get_clientsession(hass)
-        self.client = TimbusClient(session)
-        self.busmap = BusmapClient(session)
+        self.client = TimbusClient(async_get_clientsession(hass))
         self.route_name: str = entry.data[CONF_ROUTE_NAME]
         self.route_code: str = entry.data[CONF_ROUTE_CODE]
         self.station_id: str = entry.data[CONF_STATION_ID]
@@ -48,14 +46,10 @@ class HanoiBusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.paused:
             return {"all": [], "matching": [], "paused": True}
 
-        buses = await self.busmap.estimate_bus_to_station(self.station_id)
-        _LOGGER.debug("hanoi_bus: Busmap returned %d buses for station %s", len(buses), self.station_id)
-        if not buses:
-            _LOGGER.debug("hanoi_bus: falling back to timbus")
-            try:
-                buses = await self.client.part_remained(self.station_id)
-            except TimbusApiError as err:
-                raise UpdateFailed(str(err)) from err
+        try:
+            buses = await self.client.part_remained(self.station_id)
+        except TimbusApiError as err:
+            raise UpdateFailed(str(err)) from err
 
         now = time.monotonic()
         seen: set[str] = set()
